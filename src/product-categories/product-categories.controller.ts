@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, Post, Put } from '@nestjs/common';
 import { ProductCategoriesService } from './product-categories.service';
 import { Prisma, ProductCategory } from '@prisma/client';
 
@@ -7,13 +7,25 @@ export class ProductCategoriesController {
      constructor(private readonly productCategoriesService: ProductCategoriesService) { }
 
      @Get()
-     findAll(): Promise<ProductCategory[]> {
-          return this.productCategoriesService.findAll();
+     async findAll(): Promise<ProductCategory[]> {
+          const data = this.productCategoriesService.findAll();
+
+          if (!data) {
+               throw new NotFoundException('Product categories not found');
+          }
+
+          return data;
      }
 
      @Get(':id')
-     findOne(@Param('id') id: string): Promise<ProductCategory | null> {
-          return this.productCategoriesService.findOne(+id);
+     async findOne(@Param('id') id: string): Promise<ProductCategory | null> {
+          const data = await this.productCategoriesService.findOne(+id);
+
+          if (!data) {
+               throw new NotFoundException('Product category not found');
+          }
+
+          return data;
      }
 
      @Post()
