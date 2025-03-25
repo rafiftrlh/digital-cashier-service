@@ -1,8 +1,12 @@
-import { Body, Controller, Delete, Get, NotFoundException, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, Post, Put, UseGuards } from '@nestjs/common';
 import { ProductCategoriesService } from './product-categories.service';
-import { Prisma, ProductCategory } from '@prisma/client';
+import { Prisma, ProductCategory, Role } from '@prisma/client';
+import { SessionAuthGuard } from 'src/auth/guards/session-auth.guard';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
 
 @Controller('product-categories')
+@UseGuards(SessionAuthGuard, RolesGuard)
 export class ProductCategoriesController {
      constructor(private readonly productCategoriesService: ProductCategoriesService) { }
 
@@ -28,6 +32,7 @@ export class ProductCategoriesController {
           return data;
      }
 
+     @Roles(Role.ADMIN)
      @Post()
      create(@Body() data: Prisma.ProductCategoryCreateInput): Promise<ProductCategory> {
           return this.productCategoriesService.create(data);

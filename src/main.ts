@@ -4,9 +4,21 @@ import { ValidationPipe } from '@nestjs/common';
 import { PrismaExceptionFilter } from './prisma/prisma-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { GlobalExceptionFilter } from './common/filters/exception.filter';
+import * as session from 'express-session';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  app.use(
+    session({
+      secret: "secret123",
+      resave: false,
+      saveUninitialized: false,
+      cookie: {
+        secure: false, httpOnly: true, maxAge: 1000 * 60 * 60
+      }
+    })
+  )
 
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(new ValidationPipe({
