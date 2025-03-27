@@ -38,11 +38,13 @@ export class ProductCategoriesController {
           return this.productCategoriesService.create(data);
      }
 
+     @Roles(Role.ADMIN)
      @Put(':id')
      update(@Param('id') id: string, @Body() data: Prisma.ProductCategoryUpdateInput): Promise<ProductCategory> {
           return this.productCategoriesService.update(+id, data);
      }
 
+     @Roles(Role.ADMIN)
      @Delete(':id')
      remove(@Param('id') id: string): Promise<ProductCategory> {
           return this.productCategoriesService.remove(+id);
