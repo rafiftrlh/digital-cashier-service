@@ -26,6 +26,16 @@ async function main() {
           }
      });
 
+     const customer = await prisma.user.upsert({
+          where: { username: 'customer' },
+          update: {},
+          create: {
+               username: 'customer',
+               password: hashedPassword,
+               role: 'CUSTOMER',
+          }
+     })
+
      console.log('Seeding Completed!');
      console.log({ admin, cashier });
 }

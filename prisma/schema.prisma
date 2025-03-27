@@ -164,6 +164,7 @@ model Setting {
 enum Role {
   ADMIN
   CASHIER
+  CUSTOMER
 }
 
 enum DiscountType {
