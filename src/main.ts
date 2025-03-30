@@ -4,14 +4,17 @@ import { ValidationPipe } from '@nestjs/common';
 import { PrismaExceptionFilter } from './prisma/prisma-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { GlobalExceptionFilter } from './common/filters/exception.filter';
+import * as dotenv from 'dotenv';
 import * as session from 'express-session';
+
+dotenv.config();
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.use(
     session({
-      secret: "secret123",
+      secret: process.env.SESSION_SECRET ?? 'secret',
       resave: false,
       saveUninitialized: false,
       cookie: {
