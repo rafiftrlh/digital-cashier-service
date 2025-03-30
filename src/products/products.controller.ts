@@ -7,11 +7,16 @@ import {
      Body,
      Param,
      NotFoundException,
+     UseGuards,
 } from '@nestjs/common';
-import { Prisma, Product } from '@prisma/client';
+import { Prisma, Product, Role } from '@prisma/client';
 import { ProductsService } from './products.service';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { SessionAuthGuard } from 'src/auth/guards/session-auth.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
 
 @Controller('products')
+@UseGuards(SessionAuthGuard, RolesGuard)
 export class ProductsController {
      constructor(private readonly productsService: ProductsService) { }
 
@@ -31,6 +36,7 @@ export class ProductsController {
           return product;
      }
 
+     @Roles(Role.ADMIN)
      @Post()
      async create(@Body() data: any): Promise<Product> {
           const productData: Prisma.ProductCreateInput = {
@@ -45,6 +51,7 @@ export class ProductsController {
           return this.productsService.create(productData);
      }
 
+     @Roles(Role.ADMIN)
      @Put(':id')
      async update(
           @Param('id') id: string,
@@ -73,6 +80,7 @@ export class ProductsController {
           }
      }
 
+     @Roles(Role.ADMIN)
      @Delete(':id')
      async remove(@Param('id') id: string): Promise<Product> {
           try {
@@ -85,6 +93,7 @@ export class ProductsController {
           }
      }
 
+     @Roles(Role.ADMIN)
      @Put(':id/restore')
      async restore(@Param('id') id: string): Promise<Product> {
           try {
