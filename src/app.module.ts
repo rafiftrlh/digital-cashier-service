@@ -7,6 +7,8 @@ import { ProductCategoriesModule } from './product-categories/product-categories
 import { AuthService } from './auth/auth.service';
 import { AuthModule } from './auth/auth.module';
 import { ProductsModule } from './products/products.module';
+import { DiscountsModule } from './discounts/discounts.module';
+import { ProductDiscountsService } from './product-discounts/product-discounts.service';
 
 @Module({
   imports: [
@@ -17,8 +19,9 @@ import { ProductsModule } from './products/products.module';
     AuthModule,
     ProductCategoriesModule,
     ProductsModule,
+    DiscountsModule,
   ],
   controllers: [AppController],
-  providers: [AppService, AuthService],
+  providers: [AppService, AuthService, ProductDiscountsService],
 })
 export class AppModule { }
