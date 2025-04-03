@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { ProductsModule } from './products/products.module';
 import { DiscountsModule } from './discounts/discounts.module';
 import { ProductDiscountsService } from './product-discounts/product-discounts.service';
+import { OrdersModule } from './orders/orders.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ProductDiscountsService } from './product-discounts/product-discounts.s
     ProductCategoriesModule,
     ProductsModule,
     DiscountsModule,
+    OrdersModule,
   ],
   controllers: [AppController],
   providers: [AppService, AuthService, ProductDiscountsService],
