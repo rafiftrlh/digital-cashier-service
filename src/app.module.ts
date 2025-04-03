@@ -10,6 +10,7 @@ import { ProductsModule } from './products/products.module';
 import { DiscountsModule } from './discounts/discounts.module';
 import { ProductDiscountsService } from './product-discounts/product-discounts.service';
 import { OrdersModule } from './orders/orders.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { OrdersModule } from './orders/orders.module';
     ProductsModule,
     DiscountsModule,
     OrdersModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [AppService, AuthService, ProductDiscountsService],
