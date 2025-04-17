@@ -28,4 +28,4 @@ import { PaymentsModule } from './payments/payments.module';
   controllers: [AppController],
   providers: [AppService, AuthService, ProductDiscountsService],
 })
-export class AppModule { }
+export class AppModule {}

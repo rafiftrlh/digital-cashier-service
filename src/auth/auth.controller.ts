@@ -12,7 +12,11 @@ export class AuthController {
     const { username, password } = req.body;
     const user = await this.authService.validateUser(username, password);
 
-    req.session.user = { id: user.id, username: user.username, role: user.role };
+    req.session.user = {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+    };
 
     return res.json({ message: 'Login successful', user: req.session.user });
   }

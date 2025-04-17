@@ -27,16 +27,20 @@ async function bootstrap() {
       resave: false,
       saveUninitialized: false,
       cookie: {
-        secure: false, httpOnly: true, maxAge: 1000 * 60 * 60
-      }
-    })
-  )
+        secure: false,
+        httpOnly: true,
+        maxAge: 1000 * 60 * 60,
+      },
+    }),
+  );
 
   app.setGlobalPrefix('api/v1');
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    transform: true
-  }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+    }),
+  );
 
   app.useGlobalInterceptors(new ResponseInterceptor());
   app.useGlobalFilters(new GlobalExceptionFilter());

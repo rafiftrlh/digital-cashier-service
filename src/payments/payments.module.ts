@@ -7,7 +7,12 @@ import { DiscountsService } from '../discounts/discounts.service';
 
 @Module({
   controllers: [PaymentsController],
-  providers: [PaymentsService, OrdersService, OrderItemsService, DiscountsService],
-  exports: [PaymentsService]
+  providers: [
+    PaymentsService,
+    OrdersService,
+    OrderItemsService,
+    DiscountsService,
+  ],
+  exports: [PaymentsService],
 })
-export class PaymentsModule { }
+export class PaymentsModule {}
