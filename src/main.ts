@@ -6,11 +6,15 @@ import { ResponseInterceptor } from './common/interceptors/response.interceptor'
 import { GlobalExceptionFilter } from './common/filters/exception.filter';
 import * as dotenv from 'dotenv';
 import * as session from 'express-session';
+import * as express from 'express';
+import { resolve } from 'path';
 
 dotenv.config();
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  app.use('/uploads', express.static(resolve('uploads')));
 
   app.use(
     session({
