@@ -32,6 +32,11 @@ export class ProductsController {
     return this.productsService.findAll();
   }
 
+  @Get('/deleted')
+  async findDeleted(): Promise<Product[]> {
+    return this.productsService.findDeleted();
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string): Promise<Product> {
     const product = await this.productsService.findOne(parseInt(id));
@@ -133,6 +138,7 @@ export class ProductsController {
     const productData: Prisma.ProductUpdateInput = {
       ...data,
       image: file ? `/uploads/products/${file.filename}` : undefined,
+      isActive: data.isActive === 'true' ? true : false,
       price:
         data.price !== undefined
           ? typeof data.price === 'string'

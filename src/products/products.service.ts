@@ -9,8 +9,20 @@ export class ProductsService {
   async findAll(): Promise<Product[]> {
     return this.prisma.product.findMany({
       where: {
-        isActive: true,
         deletedAt: null,
+      },
+      include: {
+        category: true,
+      },
+    });
+  }
+
+  async findDeleted(): Promise<Product[]> {
+    return this.prisma.product.findMany({
+      where: {
+        deletedAt: {
+          not: null,
+        },
       },
       include: {
         category: true,
