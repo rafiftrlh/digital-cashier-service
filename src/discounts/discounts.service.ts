@@ -4,7 +4,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
 export class DiscountsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async findAll(): Promise<Discount[]> {
     return this.prisma.discount.findMany({
@@ -60,8 +60,21 @@ export class DiscountsService {
   }
 
   async create(data: Prisma.DiscountCreateInput): Promise<Discount> {
+    const dataWithFormattedDates: Prisma.DiscountCreateInput = {
+      ...data
+    };
+
+    // Jika startDate/endDate ada, pastikan dalam format Date
+    if (data.startDate) {
+      dataWithFormattedDates.startDate = new Date(data.startDate as any);
+    }
+
+    if (data.endDate) {
+      dataWithFormattedDates.endDate = new Date(data.endDate as any);
+    }
+
     return this.prisma.discount.create({
-      data,
+      data: dataWithFormattedDates,
       include: {
         productDiscounts: true,
       },
@@ -72,9 +85,23 @@ export class DiscountsService {
     id: number,
     data: Prisma.DiscountUpdateInput,
   ): Promise<Discount> {
+    // Buat salinan dari data tanpa mengubah tipe aslinya
+    const dataWithFormattedDates: Prisma.DiscountUpdateInput = {
+      ...data
+    };
+
+    // Jika startDate/endDate ada, pastikan dalam format Date
+    if (data.startDate) {
+      dataWithFormattedDates.startDate = new Date(data.startDate as any);
+    }
+
+    if (data.endDate) {
+      dataWithFormattedDates.endDate = new Date(data.endDate as any);
+    }
+
     return this.prisma.discount.update({
       where: { id },
-      data,
+      data: dataWithFormattedDates,
       include: {
         productDiscounts: true,
       },
