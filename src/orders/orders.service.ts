@@ -1,365 +1,193 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { Order, OrderStatus, OrderType, Prisma } from '@prisma/client';
-import { PrismaService } from 'src/prisma/prisma.service';
-import { OrderItemsService } from './order-items.service';
-import { v4 as uuidv4 } from 'uuid';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
+import { mapOrderToResponse } from 'src/utils/order.mapper';
 
 @Injectable()
 export class OrdersService {
-  constructor(
-    private prisma: PrismaService,
-    private orderItemsService: OrderItemsService,
-  ) {}
+  constructor(private prisma: PrismaService) { }
 
-  async findAll(): Promise<Order[]> {
-    return this.prisma.order.findMany({
-      where: {
-        deletedAt: null,
-      },
-      include: {
-        cashier: {
-          select: {
-            id: true,
-            username: true,
-          },
-        },
-        orderItems: {
-          include: {
-            product: true,
-          },
-        },
-        orderDiscounts: {
-          include: {
-            discount: true,
-          },
-        },
-        payments: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-  }
+  async create(dto: CreateOrderDto) {
+    const { items, ...orderData } = dto;
 
-  async findOne(id: number): Promise<Order | null> {
-    return this.prisma.order.findUnique({
-      where: { id },
-      include: {
-        cashier: {
-          select: {
-            id: true,
-            username: true,
-          },
-        },
-        orderItems: {
-          include: {
-            product: true,
-          },
-        },
-        orderDiscounts: {
-          include: {
-            discount: true,
-          },
-        },
-        payments: true,
-      },
-    });
-  }
+    if (items.length === 0) throw new BadRequestException('Order must contain at least one item.');
 
-  async findByStatus(status: OrderStatus): Promise<Order[]> {
-    return this.prisma.order.findMany({
-      where: {
-        status,
-        deletedAt: null,
-      },
-      include: {
-        cashier: {
-          select: {
-            id: true,
-            username: true,
-          },
-        },
-        orderItems: {
-          include: {
-            product: true,
-          },
-        },
-        orderDiscounts: {
-          include: {
-            discount: true,
-          },
-        },
-        payments: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-  }
+    const now = new Date();
+    let subtotal = new Decimal(0);
+    let discountAmount = new Decimal(0);
+    const orderItemsData: Prisma.OrderItemCreateWithoutOrderInput[] = [];
+    const orderDiscountsData: Prisma.OrderDiscountCreateWithoutOrderInput[] = [];
 
-  async create(data: CreateOrderDto): Promise<Order> {
-    const { items, ...orderData } = data;
+    for (const item of items) {
+      const product = await this.prisma.product.findUnique({
+        where: { id: item.productId },
+        include: {
+          productDiscounts: {
+            where: {
+              discount: {
+                isActive: true,
+                startDate: { lte: now },
+                endDate: { gte: now },
+              },
+            },
+            include: { discount: true },
+          },
+        },
+      });
 
-    if (!items || items.length === 0) {
-      throw new BadRequestException('Order must have at least one item');
+      if (!product) throw new BadRequestException(`Product ID ${item.productId} not found.`);
+
+      const unitPrice = product.price;
+      let itemDiscount = new Decimal(0);
+      const activeDiscount = product.productDiscounts[0]?.discount;
+
+      // Calculate item discount
+      if (activeDiscount) {
+        switch (activeDiscount.type) {
+          case 'PERCENTAGE':
+            itemDiscount = unitPrice.mul(activeDiscount.value!).div(100);
+            break;
+          case 'FIXED':
+            itemDiscount = new Decimal(activeDiscount.value!);
+            break;
+        }
+
+        orderDiscountsData.push({
+          discount: { connect: { id: activeDiscount.id } },
+          amountSaved: itemDiscount.mul(item.quantity),
+        });
+      }
+
+      // Add original item to order
+      const itemSubtotal = unitPrice.sub(itemDiscount).mul(item.quantity);
+      subtotal = subtotal.add(itemSubtotal);
+      discountAmount = discountAmount.add(itemDiscount.mul(item.quantity));
+
+      orderItemsData.push({
+        product: { connect: { id: item.productId } },
+        quantity: item.quantity,
+        unitPrice,
+        discountAmount: itemDiscount,
+        subtotal: itemSubtotal,
+        notes: item.notes,
+      });
+
+      // Handle free products from BUY_X_GET_Y
+      if (activeDiscount?.type === 'BUY_X_GET_Y' && activeDiscount.freeProduct) {
+        const freeProduct = await this.prisma.product.findUnique({
+          where: { id: activeDiscount.freeProduct },
+        });
+
+        if (freeProduct) {
+          orderItemsData.push({
+            product: { connect: { id: freeProduct.id } },
+            quantity: 1,
+            unitPrice: new Decimal(0),
+            discountAmount: freeProduct.price,
+            subtotal: new Decimal(0),
+            notes: '[FREE PRODUCT]',
+          });
+
+          orderDiscountsData.push({
+            discount: { connect: { id: activeDiscount.id } },
+            amountSaved: freeProduct.price,
+          });
+
+          discountAmount = discountAmount.add(freeProduct.price);
+        }
+      }
     }
 
-    return this.prisma.$transaction(async (prisma) => {
-      // Generate order number (could be customized based on your requirements)
-      const orderNumber = `ORD-${uuidv4().substring(0, 8).toUpperCase()}`;
+    const taxRate = new Decimal(2);
+    const taxAmount = subtotal.mul(taxRate).div(100);
+    const totalAmount = subtotal.add(taxAmount);
+    const orderNumber = 'ORD-' + Date.now();
 
-      // Initial order values
-      let subtotal = 0;
-      let discountAmount = 0;
-      let taxAmount = 0;
-
-      // Create the order first
-      const order = await prisma.order.create({
-        data: {
-          ...orderData,
-          orderNumber,
-          subtotal: 0, // Temporary values, will update after calculating items
-          discountAmount: 0,
-          taxAmount: 0,
-          totalAmount: 0,
-          status: OrderStatus.PENDING,
-          orderItems: {
-            create: [],
-          },
-        },
-      });
-
-      // Process each order item
-      const orderItemsData: any = [];
-      const orderDiscounts = new Map();
-
-      for (const item of items) {
-        // Get current product
-        const product = await prisma.product.findUnique({
-          where: { id: item.productId },
-        });
-
-        if (!product) {
-          throw new NotFoundException(
-            `Product with ID ${item.productId} not found`,
-          );
-        }
-
-        if (product.stock < item.quantity) {
-          throw new BadRequestException(
-            `Not enough stock for product ${product.name}`,
-          );
-        }
-
-        // Calculate discount
-        const {
-          subtotal: itemSubtotal,
-          discountAmount: itemDiscountAmount,
-          discountId,
-        } = await this.orderItemsService.calculateItemSubtotal(
-          item.productId,
-          item.quantity,
-          Number(product.price),
-        );
-
-        // Update product stock
-        await prisma.product.update({
-          where: { id: item.productId },
-          data: { stock: product.stock - item.quantity },
-        });
-
-        // Prepare order item data
-        orderItemsData.push({
-          orderId: order.id,
-          productId: item.productId,
-          quantity: item.quantity,
-          unitPrice: product.price,
-          discountAmount: itemDiscountAmount,
-          subtotal: itemSubtotal,
-          notes: item.notes,
-        });
-
-        // Track discount for the order
-        if (discountId) {
-          if (orderDiscounts.has(discountId)) {
-            orderDiscounts.set(
-              discountId,
-              orderDiscounts.get(discountId) + itemDiscountAmount,
-            );
-          } else {
-            orderDiscounts.set(discountId, itemDiscountAmount);
-          }
-        }
-
-        // Add to order totals
-        subtotal += Number(product.price) * item.quantity;
-        discountAmount += itemDiscountAmount;
-      }
-
-      // Create all order items at once
-      await prisma.orderItem.createMany({
-        data: orderItemsData,
-      });
-
-      // Create order discounts if any
-      for (const [discountId, amountSaved] of orderDiscounts.entries()) {
-        await prisma.orderDiscount.create({
-          data: {
-            orderId: order.id,
-            discountId,
-            amountSaved,
-          },
-        });
-      }
-
-      // Calculate tax (you can adjust tax calculation logic)
-      const taxRate = 0.11; // 11% tax (can be retrieved from settings)
-      taxAmount = (subtotal - discountAmount) * taxRate;
-
-      // Calculate total amount
-      const totalAmount = subtotal - discountAmount + taxAmount;
-
-      // Update order with final values
-      const updatedOrder = await prisma.order.update({
-        where: { id: order.id },
-        data: {
-          subtotal,
-          discountAmount,
-          taxAmount,
-          totalAmount,
-        },
-        include: {
-          cashier: {
-            select: {
-              id: true,
-              username: true,
-            },
-          },
-          orderItems: {
-            include: {
-              product: true,
-            },
-          },
-          orderDiscounts: {
-            include: {
-              discount: true,
-            },
-          },
-        },
-      });
-
-      return updatedOrder;
+    return this.prisma.order.create({
+      data: {
+        ...orderData,
+        orderNumber,
+        subtotal,
+        discountAmount,
+        taxAmount,
+        totalAmount,
+        status: 'PENDING',
+        orderItems: { create: orderItemsData },
+        orderDiscounts: { create: orderDiscountsData },
+      },
+      include: {
+        orderItems: true,
+        orderDiscounts: true,
+      },
     });
   }
 
-  async updateStatus(id: number, status: OrderStatus): Promise<Order> {
+  async findAll() {
+    const orders = await this.prisma.order.findMany({
+      where: { deletedAt: null },
+      include: {
+        orderItems: { include: { product: true } },
+        orderDiscounts: { include: { discount: true } },
+      },
+    });
+
+    return orders.map(mapOrderToResponse);
+  }
+
+  async findOne(id: number) {
     const order = await this.prisma.order.findUnique({
       where: { id },
+      include: {
+        orderItems: {
+          include: {
+            product: true,
+          },
+        },
+        orderDiscounts: {
+          include: {
+            discount: true,
+          },
+        },
+      },
     });
 
     if (!order) {
-      throw new NotFoundException(`Order with ID ${id} not found`);
+      throw new NotFoundException(`Order with ID ${id} not found.`);
     }
 
-    // Additional validation logic for status transitions
-    if (order.status === OrderStatus.CANCELLED) {
-      throw new BadRequestException('Cancelled orders cannot be updated');
+    return mapOrderToResponse(order);
+  }
+
+  async updateStatus(id: number, status: 'PAID' | 'COMPLETED' | 'CANCELLED') {
+    const validStatus = ['PAID', 'COMPLETED', 'CANCELLED'];
+    if (!validStatus.includes(status)) {
+      throw new BadRequestException('Invalid status value.');
     }
 
-    if (
-      order.status === OrderStatus.COMPLETED &&
-      status !== OrderStatus.CANCELLED
-    ) {
-      throw new BadRequestException('Completed orders cannot be updated');
-    }
-
-    return this.prisma.order.update({
+    const order = await this.prisma.order.update({
       where: { id },
       data: { status },
       include: {
-        cashier: {
-          select: {
-            id: true,
-            username: true,
-          },
-        },
-        orderItems: {
-          include: {
-            product: true,
-          },
-        },
-        orderDiscounts: {
-          include: {
-            discount: true,
-          },
-        },
-        payments: true,
+        orderItems: { include: { product: true } },
+        orderDiscounts: { include: { discount: true } },
       },
     });
+
+    return mapOrderToResponse(order);
   }
 
-  async cancel(id: number): Promise<Order> {
-    const order = await this.prisma.order.findUnique({
+  async delete(id: number) {
+    const now = new Date();
+
+    return this.prisma.order.update({
       where: { id },
+      data: { deletedAt: now },
       include: {
-        orderItems: true,
+        orderItems: { include: { product: true } },
+        orderDiscounts: { include: { discount: true } },
       },
-    });
-
-    if (!order) {
-      throw new NotFoundException(`Order with ID ${id} not found`);
-    }
-
-    if (order.status === OrderStatus.COMPLETED) {
-      throw new BadRequestException('Completed orders cannot be cancelled');
-    }
-
-    // Use transaction to ensure all operations succeed or fail together
-    return this.prisma.$transaction(async (prisma) => {
-      // Restore product stocks
-      for (const item of order.orderItems) {
-        await prisma.product.update({
-          where: { id: item.productId },
-          data: {
-            stock: {
-              increment: item.quantity,
-            },
-          },
-        });
-      }
-
-      // Update order status to CANCELLED
-      return prisma.order.update({
-        where: { id },
-        data: {
-          status: OrderStatus.CANCELLED,
-          deletedAt: new Date(),
-        },
-        include: {
-          cashier: {
-            select: {
-              id: true,
-              username: true,
-            },
-          },
-          orderItems: {
-            include: {
-              product: true,
-            },
-          },
-          orderDiscounts: {
-            include: {
-              discount: true,
-            },
-          },
-          payments: true,
-        },
-      });
     });
   }
 }
