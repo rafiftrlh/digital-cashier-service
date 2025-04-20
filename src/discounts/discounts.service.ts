@@ -1,222 +1,73 @@
-import { Injectable } from '@nestjs/common';
-import { Prisma, Discount, ProductDiscount } from '@prisma/client';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { Injectable, BadRequestException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateDiscountDto } from './dto/create-discount.dto';
+import { UpdateDiscountDto } from './dto/update-discount.dto';
+import { ApplyDiscountDto } from './dto/apply-discount.dto';
 
 @Injectable()
 export class DiscountsService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
-  async findAll(): Promise<Discount[]> {
-    return this.prisma.discount.findMany({
-      where: {
-        isActive: true,
-        deletedAt: null,
-      },
-      include: {
-        productDiscounts: {
-          include: {
-            product: true,
-          },
-        },
-      },
-    });
-  }
-
-  async findOne(id: number): Promise<Discount | null> {
-    return this.prisma.discount.findUnique({
-      where: { id },
-      include: {
-        productDiscounts: {
-          include: {
-            product: true,
-          },
-        },
-      },
-    });
-  }
-
-  async findActiveDiscounts(): Promise<Discount[]> {
-    const currentDate = new Date();
-
-    return this.prisma.discount.findMany({
-      where: {
-        isActive: true,
-        deletedAt: null,
-        startDate: {
-          lte: currentDate,
-        },
-        endDate: {
-          gte: currentDate,
-        },
-      },
-      include: {
-        productDiscounts: {
-          include: {
-            product: true,
-          },
-        },
-      },
-    });
-  }
-
-  async create(data: Prisma.DiscountCreateInput): Promise<Discount> {
-    const dataWithFormattedDates: Prisma.DiscountCreateInput = {
-      ...data
-    };
-
-    // Jika startDate/endDate ada, pastikan dalam format Date
-    if (data.startDate) {
-      dataWithFormattedDates.startDate = new Date(data.startDate as any);
-    }
-
-    if (data.endDate) {
-      dataWithFormattedDates.endDate = new Date(data.endDate as any);
+  async create(dto: CreateDiscountDto) {
+    if (dto.type === 'BUY_X_GET_Y' && !dto.freeProduct) {
+      throw new BadRequestException('freeProduct required for BUY_X_GET_Y type');
     }
 
     return this.prisma.discount.create({
-      data: dataWithFormattedDates,
-      include: {
-        productDiscounts: true,
+      data: {
+        ...dto,
+        startDate: new Date(dto.startDate),
+        endDate: new Date(dto.endDate),
       },
     });
   }
 
-  async update(
-    id: number,
-    data: Prisma.DiscountUpdateInput,
-  ): Promise<Discount> {
-    // Buat salinan dari data tanpa mengubah tipe aslinya
-    const dataWithFormattedDates: Prisma.DiscountUpdateInput = {
-      ...data
-    };
-
-    // Jika startDate/endDate ada, pastikan dalam format Date
-    if (data.startDate) {
-      dataWithFormattedDates.startDate = new Date(data.startDate as any);
-    }
-
-    if (data.endDate) {
-      dataWithFormattedDates.endDate = new Date(data.endDate as any);
-    }
-
-    return this.prisma.discount.update({
-      where: { id },
-      data: dataWithFormattedDates,
-      include: {
-        productDiscounts: true,
-      },
-    });
+  async findAll() {
+    return this.prisma.discount.findMany();
   }
 
-  async remove(id: number): Promise<Discount> {
-    // Soft delete
+  async findOne(id: number) {
+    return this.prisma.discount.findUnique({ where: { id } });
+  }
+
+  async update(id: number, dto: UpdateDiscountDto) {
     return this.prisma.discount.update({
       where: { id },
       data: {
-        isActive: false,
-        deletedAt: new Date(),
+        ...dto,
+        startDate: dto.startDate ? new Date(dto.startDate) : undefined,
+        endDate: dto.endDate ? new Date(dto.endDate) : undefined,
       },
     });
   }
 
-  async applyDiscountToProduct(
-    discountId: number,
-    productId: number,
-  ): Promise<ProductDiscount> {
-    const productDiscount = await this.prisma.productDiscount.create({
-      data: {
-        product: {
-          connect: { id: productId },
-        },
-        discount: {
-          connect: { id: discountId },
-        },
-      },
-    });
-
-    return productDiscount;
+  async remove(id: number) {
+    return this.prisma.discount.delete({ where: { id } });
   }
 
-  async removeDiscountFromProduct(
-    discountId: number,
-    productId: number,
-  ): Promise<ProductDiscount> {
-    return this.prisma.productDiscount.delete({
-      where: {
-        productId_discountId: {
-          productId,
-          discountId,
-        },
-      },
-    });
-  }
+  async applyToProduct(dto: ApplyDiscountDto) {
+    const { productId, discountId } = dto;
 
-  async calculateDiscount(
-    productId: number,
-    quantity: number,
-    unitPrice: number,
-  ): Promise<{ discountAmount: number; discountId: number | null }> {
-    // Get all active discounts for this product
-    const currentDate = new Date();
-
-    const productDiscounts = await this.prisma.productDiscount.findMany({
+    const existing = await this.prisma.productDiscount.findFirst({
       where: {
         productId,
         discount: {
           isActive: true,
-          deletedAt: null,
-          startDate: {
-            lte: currentDate,
-          },
-          endDate: {
-            gte: currentDate,
-          },
+          startDate: { lte: new Date() },
+          endDate: { gte: new Date() },
         },
-      },
-      include: {
-        discount: true,
       },
     });
 
-    if (!productDiscounts.length) {
-      return { discountAmount: 0, discountId: null };
+    if (existing) {
+      throw new BadRequestException('Product already has an active discount.');
     }
 
-    let maxDiscount = 0;
-    let bestDiscountId: number | null = null;
-
-    // Evaluate each applicable discount and find the best one
-    for (const productDiscount of productDiscounts) {
-      const { discount } = productDiscount;
-      let currentDiscount = 0;
-
-      switch (discount.type) {
-        case 'PERCENTAGE':
-          currentDiscount =
-            (unitPrice * quantity * Number(discount.value)) / 100;
-          break;
-        case 'FIXED':
-          currentDiscount = Number(discount.value) * quantity;
-          break;
-        case 'BUY_X_GET_Y':
-          if (discount.buyX && discount.getY) {
-            const sets = Math.floor(quantity / (discount.buyX + discount.getY));
-            const freeItems = sets * discount.getY;
-            currentDiscount = freeItems * unitPrice;
-          }
-          break;
-      }
-
-      // Keep the best discount
-      if (currentDiscount > maxDiscount) {
-        maxDiscount = currentDiscount;
-        bestDiscountId = discount.id;
-      }
-    }
-
-    return {
-      discountAmount: maxDiscount,
-      discountId: bestDiscountId ?? null,
-    };
+    return this.prisma.productDiscount.create({
+      data: {
+        productId,
+        discountId,
+      },
+    });
   }
 }
