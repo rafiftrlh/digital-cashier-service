@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `payments` ADD COLUMN `change` DECIMAL(10, 2) NOT NULL DEFAULT 0.00;

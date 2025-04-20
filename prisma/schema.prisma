@@ -59,9 +59,8 @@ model Discount {
   id               Int               @id @default(autoincrement())
   name             String
   type             DiscountType
-  value            Decimal           @db.Decimal(10, 2)
-  buyX             Int?              @map("buy_x")
-  getY             Int?              @map("get_y")
+  value            Decimal?          @db.Decimal(10, 2)
+  freeProduct      Int?              @map("free_product")
   startDate        DateTime          @map("start_date")
   endDate          DateTime          @map("end_date")
   isActive         Boolean           @default(true) @map("is_active")
@@ -142,6 +141,7 @@ model Payment {
   orderId       Int           @map("order_id")
   paymentMethod PaymentMethod @map("payment_method")
   amount        Decimal       @db.Decimal(10, 2)
+  change        Decimal       @default(0.00) @db.Decimal(10, 2)
   transactionId String?       @map("transaction_id")
   status        PaymentStatus @default(PENDING)
   createdAt     DateTime      @default(now()) @map("created_at")
