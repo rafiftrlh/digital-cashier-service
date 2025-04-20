@@ -1,148 +1,70 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { Payment, PaymentMethod, PaymentStatus, Prisma } from '@prisma/client';
-import { PrismaService } from 'src/prisma/prisma.service';
-import { OrdersService } from '../orders/orders.service';
-import { OrderStatus } from '@prisma/client';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { PaymentStatus } from '@prisma/client';
 
 @Injectable()
 export class PaymentsService {
-  constructor(
-    private prisma: PrismaService,
-    private ordersService: OrdersService,
-  ) {}
+  constructor(private prisma: PrismaService) { }
 
-  async findAll(): Promise<Payment[]> {
-    return this.prisma.payment.findMany({
-      include: {
-        order: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-  }
-
-  async findByOrder(orderId: number): Promise<Payment[]> {
-    return this.prisma.payment.findMany({
-      where: { orderId },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-  }
-
-  async findOne(id: number): Promise<Payment | null> {
-    return this.prisma.payment.findUnique({
-      where: { id },
-      include: {
-        order: true,
-      },
-    });
-  }
-
-  async create(data: CreatePaymentDto): Promise<Payment> {
-    const { orderId, paymentMethod, amount, transactionId } = data;
-
-    // Verify order exists and is in PENDING status
+  async create(dto: CreatePaymentDto) {
     const order = await this.prisma.order.findUnique({
-      where: { id: orderId },
-      include: {
-        payments: true,
-      },
+      where: { id: dto.orderId },
     });
 
-    if (!order) {
-      throw new NotFoundException(`Order with ID ${orderId} not found`);
+    if (!order) throw new BadRequestException('Order not found');
+
+    if (order.status !== 'PENDING') {
+      throw new BadRequestException('Order already paid or completed');
     }
 
-    if (order.status !== OrderStatus.PENDING) {
-      throw new BadRequestException(
-        `Cannot process payment for order in ${order.status} status`,
-      );
+    const total = order.totalAmount.toNumber();
+    const amountPaid = dto.amount;
+    let change = 0;
+
+    if (dto.paymentMethod === 'QRIS') {
+      if (amountPaid !== total) {
+        throw new BadRequestException('QRIS payment must match total amount exactly');
+      }
     }
 
-    // Ensure full payment
-    if (amount !== Number(order.totalAmount)) {
-      throw new BadRequestException(
-        `Payment amount must be equal to the total amount: ${order.totalAmount}`,
-      );
-    }
-
-    // Create payment transaction
-    return this.prisma.$transaction(async (prisma) => {
-      // Create the payment
-      const payment = await prisma.payment.create({
-        data: {
-          orderId,
-          paymentMethod,
-          amount,
-          transactionId,
-          status: PaymentStatus.PENDING,
-        },
-      });
-
-      return payment;
-    });
-  }
-
-  async processPayment(id: number, status: PaymentStatus): Promise<Payment> {
-    const payment = await this.prisma.payment.findUnique({
-      where: { id },
-      include: {
-        order: {
-          include: {
-            payments: true,
-          },
-        },
-      },
-    });
-
-    if (!payment) {
-      throw new NotFoundException(`Payment with ID ${id} not found`);
-    }
-
-    if (payment.status !== PaymentStatus.PENDING) {
-      throw new BadRequestException(`Payment is already ${payment.status}`);
-    }
-
-    return this.prisma.$transaction(async (prisma) => {
-      // Update payment status
-      const updatedPayment = await prisma.payment.update({
-        where: { id },
-        data: { status },
-      });
-
-      // If payment is successful, check if order is fully paid
-      if (status === PaymentStatus.PAID) {
-        const order = payment.order;
-        const payments = [
-          ...order.payments.filter((p) => p.id !== id),
-          { ...payment, status: PaymentStatus.PAID },
-        ];
-
-        const totalPaid = payments.reduce(
-          (sum, payment) =>
-            payment.status === PaymentStatus.PAID
-              ? sum + Number(payment.amount)
-              : sum,
-          0,
-        );
-
-        // If order is fully paid, update order status
-        if (totalPaid >= Number(order.totalAmount)) {
-          await prisma.order.update({
-            where: { id: order.id },
-            data: { status: OrderStatus.PAID },
-          });
-        }
+    if (dto.paymentMethod === 'CASH') {
+      if (amountPaid < total) {
+        throw new BadRequestException('Cash payment is less than total amount');
       }
 
-      return updatedPayment;
+      change = amountPaid - total;
+    }
+
+    await this.prisma.payment.create({
+      data: {
+        order: { connect: { id: dto.orderId } },
+        paymentMethod: dto.paymentMethod,
+        amount: amountPaid,
+        transactionId: dto.transactionId,
+        status: PaymentStatus.PAID,
+        change,
+      },
+    });
+
+    await this.prisma.order.update({
+      where: { id: dto.orderId },
+      data: { status: 'PAID' },
+    });
+
+    return {
+      message: 'Payment successful',
+      orderId: dto.orderId,
+      paymentMethod: dto.paymentMethod,
+      amount: amountPaid,
+      change,
+      status: 'PAID',
+    };
+  }
+
+  async findAll() {
+    return this.prisma.payment.findMany({
+      include: { order: true },
     });
   }
 }

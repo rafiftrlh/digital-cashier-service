@@ -8,8 +8,8 @@ import { AuthService } from './auth/auth.service';
 import { AuthModule } from './auth/auth.module';
 import { ProductsModule } from './products/products.module';
 import { DiscountsModule } from './discounts/discounts.module';
-import { ProductDiscountsService } from './product-discounts/product-discounts.service';
 import { OrdersModule } from './orders/orders.module';
+import { ReportsModule } from './reports/reports.module';
 import { PaymentsModule } from './payments/payments.module';
 
 @Module({
@@ -24,8 +24,9 @@ import { PaymentsModule } from './payments/payments.module';
     DiscountsModule,
     OrdersModule,
     PaymentsModule,
+    ReportsModule,
   ],
   controllers: [AppController],
-  providers: [AppService, AuthService, ProductDiscountsService],
+  providers: [AppService, AuthService],
 })
 export class AppModule {}
