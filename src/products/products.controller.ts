@@ -1,216 +1,118 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Put,
-  Delete,
-  Body,
-  Param,
-  NotFoundException,
-  UseGuards,
-  UploadedFile,
-  UseInterceptors,
+  Controller, Get, Post, Put, Delete, Body, Param,
+  NotFoundException, UploadedFile, UseInterceptors,
+  UseGuards
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
-import { Prisma, Product, Role } from '@prisma/client';
 import { ProductsService } from './products.service';
-import { RolesGuard } from 'src/auth/guards/roles.guard';
-import { SessionAuthGuard } from 'src/auth/guards/session-auth.guard';
+import { Role } from '@prisma/client';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import * as fs from 'fs';
 import * as path from 'path';
+import { CreateProductDto } from './dto/create-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
+import { SessionAuthGuard } from 'src/auth/guards/session-auth.guard';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
 
 @Controller('products')
 @UseGuards(SessionAuthGuard, RolesGuard)
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(private readonly service: ProductsService) { }
 
   @Get()
-  async findAll(): Promise<Product[]> {
-    return this.productsService.findAll();
+  findAll() {
+    return this.service.findAll();
   }
 
   @Get('/deleted')
-  async findDeleted(): Promise<Product[]> {
-    return this.productsService.findDeleted();
+  @Roles(Role.ADMIN)
+  findDeleted() {
+    return this.service.findDeleted();
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string): Promise<Product> {
-    const product = await this.productsService.findOne(parseInt(id));
-
-    if (!product) {
-      throw new NotFoundException(`Product with ID ${id} not found`);
-    }
-
+  @Roles(Role.ADMIN, Role.CASHIER)
+  async findOne(@Param('id') id: string) {
+    const product = await this.service.findOne(+id);
+    if (!product) throw new NotFoundException('Product not found');
     return product;
   }
 
-  @Roles(Role.ADMIN)
   @Post()
-  @UseInterceptors(
-    FileInterceptor('image', {
-      storage: diskStorage({
-        destination: './uploads/products',
-        filename: (req, file, callback) => {
-          const uniqueSuffix =
-            Date.now() + '-' + Math.round(Math.random() * 1e9);
-          const ext = extname(file.originalname);
-          callback(null, `${file.fieldname}-${uniqueSuffix}${ext}`);
-        },
-      }),
-      fileFilter: (req, file, callback) => {
-        if (!file.mimetype.match(/\/(jpg|jpeg|png|webp)$/)) {
-          return callback(new Error('Only image files are allowed!'), false);
-        }
-        callback(null, true);
-      },
+  @Roles(Role.ADMIN)
+  @UseInterceptors(FileInterceptor('image', {
+    storage: diskStorage({
+      destination: './uploads/products',
+      filename: (_, file, cb) => {
+        const unique = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
+        cb(null, `${file.fieldname}-${unique}${extname(file.originalname)}`);
+      }
     }),
-  )
+    fileFilter: (_, file, cb) => {
+      if (!file.mimetype.match(/\/(jpg|jpeg|png|webp)$/)) {
+        return cb(new Error('Only image files are allowed!'), false);
+      }
+      cb(null, true);
+    }
+  }))
   async create(
-    @Body() data: any,
-    @UploadedFile() file: Express.Multer.File,
-  ): Promise<Product> {
-    const productData: Prisma.ProductCreateInput = {
+    @Body() data: CreateProductDto,
+    @UploadedFile() file: Express.Multer.File
+  ) {
+    return this.service.create({
       ...data,
-      image: file ? `/uploads/products/${file.filename}` : undefined,
-      price:
-        typeof data.price === 'string' ? parseFloat(data.price) : data.price,
-      stock: typeof data.stock === 'string' ? parseInt(data.stock) : data.stock,
-      categoryId: data.categoryId
-        ? typeof data.categoryId === 'string'
-          ? parseInt(data.categoryId)
-          : data.categoryId
-        : undefined,
-    };
-
-    return this.productsService.create(productData);
+      image: file ? `/uploads/products/${file.filename}` : undefined
+    });
   }
 
-  @Roles(Role.ADMIN)
   @Put(':id')
-  @UseInterceptors(
-    FileInterceptor('image', {
-      storage: diskStorage({
-        destination: './uploads/products',
-        filename: (req, file, callback) => {
-          const uniqueSuffix =
-            Date.now() + '-' + Math.round(Math.random() * 1e9);
-          const ext = extname(file.originalname);
-          callback(null, `${file.fieldname}-${uniqueSuffix}${ext}`);
-        },
-      }),
-      fileFilter: (req, file, callback) => {
-        if (!file.mimetype.match(/\/(jpg|jpeg|png|webp)$/)) {
-          return callback(new Error('Only image files are allowed!'), false);
-        }
-        callback(null, true);
-      },
+  @Roles(Role.ADMIN)
+  @UseInterceptors(FileInterceptor('image', {
+    storage: diskStorage({
+      destination: './uploads/products',
+      filename: (_, file, cb) => {
+        const unique = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
+        cb(null, `${file.fieldname}-${unique}${extname(file.originalname)}`);
+      }
     }),
-  )
+    fileFilter: (_, file, cb) => {
+      if (!file.mimetype.match(/\/(jpg|jpeg|png|webp)$/)) {
+        return cb(new Error('Only image files are allowed!'), false);
+      }
+      cb(null, true);
+    }
+  }))
   async update(
     @Param('id') id: string,
-    @Body() data: any,
-    @UploadedFile() file: Express.Multer.File,
-  ): Promise<Product> {
-    const productId = parseInt(id);
+    @Body() data: UpdateProductDto,
+    @UploadedFile() file: Express.Multer.File
+  ) {
+    const product = await this.service.findOne(+id);
+    if (!product) throw new NotFoundException('Product not found');
 
-    const existingProduct = await this.productsService.findOne(productId);
-    if (!existingProduct) {
-      throw new NotFoundException(`Product with ID ${id} not found`);
+    // delete old image if exists
+    if (file && product.image) {
+      const oldPath = path.join(process.cwd(), product.image);
+      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
     }
 
-    if (file && existingProduct.image) {
-      const oldImagePath = path.join(
-        __dirname,
-        '..',
-        '..',
-        '..',
-        existingProduct.image,
-      );
-      if (fs.existsSync(oldImagePath)) {
-        fs.unlinkSync(oldImagePath);
-      }
-    }
-
-    const productData: Prisma.ProductUpdateInput = {
+    return this.service.update(+id, {
       ...data,
-      image: file ? `/uploads/products/${file.filename}` : undefined,
-      isActive: data.isActive === 'true' ? true : false,
-      price:
-        data.price !== undefined
-          ? typeof data.price === 'string'
-            ? parseFloat(data.price)
-            : data.price
-          : undefined,
-      stock:
-        data.stock !== undefined
-          ? typeof data.stock === 'string'
-            ? parseInt(data.stock)
-            : data.stock
-          : undefined,
-      categoryId:
-        data.categoryId !== undefined
-          ? typeof data.categoryId === 'string'
-            ? parseInt(data.categoryId)
-            : data.categoryId
-          : undefined,
-    };
-
-    return await this.productsService.update(productId, productData);
+      image: file ? `/uploads/products/${file.filename}` : product.image
+    });
   }
 
-  @Roles(Role.ADMIN)
   @Delete(':id')
-  async remove(@Param('id') id: string): Promise<Product> {
-    try {
-      return await this.productsService.remove(parseInt(id));
-    } catch (error) {
-      if (error.code === 'P2025') {
-        throw new NotFoundException(`Product with ID ${id} not found`);
-      }
-      throw error;
-    }
-  }
-
   @Roles(Role.ADMIN)
-  @Put(':id/restore')
-  async restore(@Param('id') id: string): Promise<Product> {
-    try {
-      return await this.productsService.restore(parseInt(id));
-    } catch (error) {
-      if (error.code === 'P2025') {
-        throw new NotFoundException(`Product with ID ${id} not found`);
-      }
-      throw error;
-    }
+  async remove(@Param('id') id: string) {
+    return this.service.remove(+id);
   }
 
-  // @Roles(Role.ADMIN)
-  // @Post('upload')
-  // @UseInterceptors(FileInterceptor('image', {
-  //      storage: diskStorage({
-  //           destination: './uploads/products',
-  //           filename: (req, file, callback) => {
-  //                const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-  //                const ext = extname(file.originalname);
-  //                callback(null, `${file.fieldname}-${uniqueSuffix}${ext}`);
-  //           },
-  //      }),
-  //      fileFilter: (req, file, callback) => {
-  //           if (!file.mimetype.match(/\/(jpg|jpeg|png|webp)$/)) {
-  //                return callback(new Error('Only image files are allowed!'), false);
-  //           }
-  //           callback(null, true);
-  //      },
-  // }))
-  // async uploadProductImage(@UploadedFile() file: Express.Multer.File) {
-  //      return {
-  //           message: 'Image uploaded successfully',
-  //           filename: file.filename,
-  //           path: `/uploads/products/${file.filename}`,
-  //      };
-  // }
+  @Put(':id/restore')
+  @Roles(Role.ADMIN)
+  async restore(@Param('id') id: string) {
+    return this.service.restore(+id);
+  }
 }
