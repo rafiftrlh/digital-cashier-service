@@ -10,60 +10,57 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ProductCategoriesService } from './product-categories.service';
-import { Prisma, ProductCategory, Role } from '@prisma/client';
+import { ProductCategory } from '@prisma/client';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { Role } from '@prisma/client';
+import { CreateProductCategoryDto } from './dto/create-product-category.dto';
+import { UpdateProductCategoryDto } from './dto/update-product-category.dto';
 import { SessionAuthGuard } from 'src/auth/guards/session-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
-import { Roles } from 'src/auth/decorators/roles.decorator';
 
 @Controller('product-categories')
 @UseGuards(SessionAuthGuard, RolesGuard)
 export class ProductCategoriesController {
-  constructor(
-    private readonly productCategoriesService: ProductCategoriesService,
-  ) {}
+  constructor(private readonly service: ProductCategoriesService) { }
 
   @Get()
+  @Roles(Role.ADMIN, Role.CASHIER)
   async findAll(): Promise<ProductCategory[]> {
-    const data = this.productCategoriesService.findAll();
-
-    if (!data) {
-      throw new NotFoundException('Product categories not found');
+    const categories = await this.service.findAll();
+    if (!categories || categories.length === 0) {
+      throw new NotFoundException('No product categories found');
     }
-
-    return data;
+    return categories;
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string): Promise<ProductCategory | null> {
-    const data = await this.productCategoriesService.findOne(+id);
-
-    if (!data) {
+  @Roles(Role.ADMIN, Role.CASHIER)
+  async findOne(@Param('id') id: string): Promise<ProductCategory> {
+    const category = await this.service.findOne(+id);
+    if (!category) {
       throw new NotFoundException('Product category not found');
     }
-
-    return data;
+    return category;
   }
 
-  @Roles(Role.ADMIN)
   @Post()
-  create(
-    @Body() data: Prisma.ProductCategoryCreateInput,
-  ): Promise<ProductCategory> {
-    return this.productCategoriesService.create(data);
+  @Roles(Role.ADMIN)
+  create(@Body() dto: CreateProductCategoryDto): Promise<ProductCategory> {
+    return this.service.create(dto);
   }
 
-  @Roles(Role.ADMIN)
   @Put(':id')
+  @Roles(Role.ADMIN)
   update(
     @Param('id') id: string,
-    @Body() data: Prisma.ProductCategoryUpdateInput,
+    @Body() dto: UpdateProductCategoryDto,
   ): Promise<ProductCategory> {
-    return this.productCategoriesService.update(+id, data);
+    return this.service.update(+id, dto);
   }
 
-  @Roles(Role.ADMIN)
   @Delete(':id')
+  @Roles(Role.ADMIN)
   remove(@Param('id') id: string): Promise<ProductCategory> {
-    return this.productCategoriesService.remove(+id);
+    return this.service.remove(+id);
   }
 }
