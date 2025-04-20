@@ -17,7 +17,7 @@ async function bootstrap() {
   app.use('/uploads', express.static(resolve('uploads')));
 
   app.enableCors({
-    origin: 'http://localhost:5173',
+    origin: process.env.ORIGIN ?? 'http://localhost:5000',
     credentials: true,
   });
 
