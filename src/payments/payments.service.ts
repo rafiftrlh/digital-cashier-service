@@ -52,6 +52,8 @@ export class PaymentsService {
       data: { status: 'PAID' },
     });
 
+    await this.updateProductStockFromOrder(dto.orderId);
+
     return {
       message: 'Payment successful',
       orderId: dto.orderId,
@@ -60,6 +62,26 @@ export class PaymentsService {
       change,
       status: 'PAID',
     };
+  }
+
+  private async updateProductStockFromOrder(orderId: number) {
+    const orderItems = await this.prisma.orderItem.findMany({
+      where: { orderId },
+      include: { product: true },
+    });
+
+    for (const item of orderItems) {
+      const newStock = item.product.stock - item.quantity;
+
+      if (newStock < 0) {
+        throw new BadRequestException(`Stok untuk produk "${item.product.name}" tidak cukup.`);
+      }
+
+      await this.prisma.product.update({
+        where: { id: item.productId },
+        data: { stock: newStock },
+      });
+    }
   }
 
   async findAll() {
