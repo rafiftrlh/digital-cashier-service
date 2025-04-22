@@ -4,7 +4,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
 export class ProductsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async findAll(): Promise<Product[]> {
     return this.prisma.product.findMany({
@@ -14,7 +14,9 @@ export class ProductsService {
       include: {
         category: true,
         productDiscounts: {
-          select: { discountId: true },
+          include: {
+            discount: true,
+          },
         },
       },
     });

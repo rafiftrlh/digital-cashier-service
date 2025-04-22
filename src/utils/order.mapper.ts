@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 
 export function mapOrderToResponse(order: any) {
      return {
+          id: order.id,
           orderNumber: order.orderNumber,
           customerName: order.customerName,
           tableNumber: order.tableNumber,
