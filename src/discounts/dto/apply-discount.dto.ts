@@ -1,8 +1,10 @@
-import { IsInt } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsArray, IsInt } from 'class-validator';
 
 export class ApplyDiscountDto {
-     @IsInt()
-     productId: number;
+     @IsArray()
+     @IsInt({ each: true })
+     productIds: number[];
 
      @IsInt()
      discountId: number;

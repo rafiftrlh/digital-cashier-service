@@ -6,7 +6,7 @@ import { ApplyDiscountDto } from './dto/apply-discount.dto';
 
 @Injectable()
 export class DiscountsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async create(dto: CreateDiscountDto) {
     if (dto.type === 'BUY_X_GET_Y' && !dto.freeProduct) {
@@ -46,28 +46,31 @@ export class DiscountsService {
   }
 
   async applyToProduct(dto: ApplyDiscountDto) {
-    const { productId, discountId } = dto;
+    const { productIds, discountId } = dto;
 
-    const existing = await this.prisma.productDiscount.findFirst({
-      where: {
-        productId,
-        discount: {
-          isActive: true,
-          startDate: { lte: new Date() },
-          endDate: { gte: new Date() },
+    for (const productId of productIds) {
+      const existing = await this.prisma.productDiscount.findFirst({
+        where: {
+          productId,
+          discount: {
+            isActive: true,
+            startDate: { lte: new Date() },
+            endDate: { gte: new Date() },
+          },
         },
-      },
-    });
+      });
 
-    if (existing) {
-      throw new BadRequestException('Product already has an active discount.');
+      if (existing) continue;
+
+      await this.prisma.productDiscount.create({
+        data: {
+          productId,
+          discountId,
+        },
+      });
     }
 
-    return this.prisma.productDiscount.create({
-      data: {
-        productId,
-        discountId,
-      },
-    });
+    return { message: 'Discount applied successfully to selected products.' };
   }
+
 }

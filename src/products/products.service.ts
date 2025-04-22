@@ -13,6 +13,9 @@ export class ProductsService {
       },
       include: {
         category: true,
+        productDiscounts: {
+          select: { discountId: true },
+        },
       },
     });
   }

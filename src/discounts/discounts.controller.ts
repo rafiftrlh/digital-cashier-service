@@ -1,6 +1,7 @@
 import {
   Controller, Post, Body, Get, Param, Patch, Delete,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { DiscountsService } from './discounts.service';
 import { CreateDiscountDto } from './dto/create-discount.dto';
@@ -10,6 +11,7 @@ import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { SessionAuthGuard } from 'src/auth/guards/session-auth.guard';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { Role } from '@prisma/client';
+import { AnyFilesInterceptor } from '@nestjs/platform-express';
 
 @Controller('discounts')
 @UseGuards(SessionAuthGuard, RolesGuard)
@@ -18,6 +20,7 @@ export class DiscountController {
 
   @Post()
   @Roles(Role.ADMIN)
+  @UseInterceptors(AnyFilesInterceptor())
   create(@Body() dto: CreateDiscountDto) {
     return this.discountsService.create(dto);
   }
@@ -34,6 +37,7 @@ export class DiscountController {
 
   @Patch(':id')
   @Roles(Role.ADMIN)
+  @UseInterceptors(AnyFilesInterceptor())
   update(@Param('id') id: string, @Body() dto: UpdateDiscountDto) {
     return this.discountsService.update(+id, dto);
   }
